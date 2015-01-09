@@ -36,6 +36,12 @@ if os.environ['REQUEST_METHOD'] == 'POST':
 
   parser = parser()
 
+  origin_re = re.compile('''
+    Origin:\ *
+    |
+    (?:Made\ in|Product\ of)(?::\ *|\ (?:the\ )?)
+    ''', re.IGNORECASE|re.VERBOSE)
+
   country_codes = {
     'cote d\'ivore': 'CI',
     'itali': 'IT',
@@ -61,12 +67,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   countries.sort(key=len)
   countries.reverse()
   countries = '|'.join(map(re.escape, countries))
-  origin_re = re.compile('''
-    (?:
-      Origin:\ *
-      |
-      (?:Made\ in|Product\ of)(?::\ *|\ (?:the\ )?)
-    )
+  countries_re = re.compile('''
     (''' + countries + ''')
     (?:
       (?:\ or\ |\ *[&,/]\ *)
@@ -184,17 +185,19 @@ if os.environ['REQUEST_METHOD'] == 'POST':
       return size[0].upper() + size[1:]
 
   data = {}
-  for row in csv.reader(open(filename + '.csv', 'U')):
-    if row[0] == 'Product':
-      _, name, code, description, price, allow_purchases, category = row
+  for row in csv.DictReader(open(filename + '.csv', 'U')):
+    if row['Item Type'] == 'Product':
 
-      name = name.decode('latin1').replace('\x89\xdb\xa2', '•')
+      name = row['Product Name']
+      name = name.decode('utf-8')
       if name.lower().startswith('organic '):
         name = name[8:]
 
-      code = code.decode('latin1').replace('\x89\xdb\xa2', '•')
+      code = row['Product Code/SKU']
+      code = code.decode('utf-8')
       code = code.replace(' ', '')
 
+      description = row['Product Description']
       parser.data = ''
       parser.feed(description)
       description = ' '.join(parser.data.split())
@@ -207,6 +210,12 @@ if os.environ['REQUEST_METHOD'] == 'POST':
 
       match = origin_re.search(description)
       if match:
+        match = countries_re.match(description, match.end())
+
+      else:
+        match = countries_re.match(description)
+
+      if match:
 
         origin = country_codes[match.group(1).lower()]
         if match.group(2):
@@ -215,51 +224,68 @@ if os.environ['REQUEST_METHOD'] == 'POST':
       else:
         origin = None
 
-      if allow_purchases == 'Y':
-        price = float(price)
+      if row['Allow Purchases?'] == 'Y':
+
+        product_price = row['Price']
+        product_price = float(product_price)
 
       else:
-        price = 'O/S'
+        product_price = 'O/S'
 
-      category = category.split(b';')[0]
-      category = category.decode('latin1').replace('\x89\xdb\xa2', '•')
+      category = row['Category']
+      category = category.split(b';', 1)[0]
+      category = category.decode('utf-8')
 
       skus = {}
       rules = []
 
       if category in data:
-        data[category].append((name, code, certified_organic, origin, description, price, skus, rules))
+        data[category].append((name, code, certified_organic, origin, description, product_price, skus, rules))
 
       else:
-        data[category] = [(name, code, certified_organic, origin, description, price, skus, rules)]
+        data[category] = [(name, code, certified_organic, origin, description, product_price, skus, rules)]
 
-    elif row[0] == '  SKU':
-      _, size, code, _, _, _, _ = row
+    elif row['Item Type'] == '  SKU':
 
+      size = row['Product Name']
       size = fixup_size(size)
 
-      code = code.decode('latin1').replace('\x89\xdb\xa2', '•')
+      code = row['Product Code/SKU']
+      code = code.decode('utf-8')
       code = code.replace(' ', '')
 
       skus[size] = code
 
-    elif row[0] == '  Rule':
-      _, size, code, _, price, allow_purchases, _ = row
+    elif row['Item Type'] == '  Rule':
 
+      size = row['Product Name']
       size = fixup_size(size)
 
-      code = code.decode('latin1').replace('\x89\xdb\xa2', '•')
+      code = row['Product Code/SKU']
+      code = code.decode('utf-8')
       code = code.replace(' ', '')
 
-      if allow_purchases == 'Y':
+      if row['Allow Purchases?'] == 'Y':
 
-        price = price[7:]
-        price = float(price)
+        rule_price = row['Price']
+        if rule_price.startswith('[ADD]'):
+
+          rule_price = rule_price[5:]
+          rule_price = float(rule_price)
+          rule_price += product_price
+
+        elif rule_price.startswith('[FIXED]'):
+
+          rule_price = rule_price[7:]
+          rule_price = float(rule_price)
+
+        else:
+          rule_price = product_price
 
       else:
-        price = 'O/S'
+        rule_price = 'O/S'
 
-      rules.append((size, code, price))
+      rules.append((size, code, rule_price))
 
   country_names = {}
   for entry in tree.findall('iso_3166_entry'):
