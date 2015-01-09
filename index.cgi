@@ -292,14 +292,37 @@ if os.environ['REQUEST_METHOD'] == 'POST':
     left=1,
     right=1))
   center = workbook.add_format(dict(align='center'))
+  center_border = workbook.add_format(dict(
+    align='center',
+    bottom=4,
+    left=1,
+    right=1))
+  center_bottom = workbook.add_format(dict(
+    align='center',
+    bottom=1,
+    left=1,
+    right=1))
+  currency = workbook.add_format(dict(num_format='$#,##0.00'))
+  currency_border = workbook.add_format(dict(
+    bottom=4,
+    left=1,
+    num_format='$#,##0.00',
+    right=1))
+  currency_bottom = workbook.add_format(dict(
+    bottom=1,
+    left=1,
+    num_format='$#,##0.00',
+    right=1))
   header = workbook.add_format(dict(
     align='center',
     bold=True,
     bottom=1))
   header_rotation = workbook.add_format(dict(
     align='center',
+    bottom=1,
     font_size=10,
     rotation=-90,
+    text_wrap=True,
     valign='vcenter'))
   heading = workbook.add_format(dict(
     bold=True,
@@ -314,7 +337,6 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   last_updated_bold = workbook.add_format(dict(
     bold=True,
     font_color='#FF0000'))
-  price = workbook.add_format(dict(num_format='$#,##0.00'))
   text_wrap = workbook.add_format(dict(text_wrap=True))
   thank_you = workbook.add_format(dict(
     align='center',
@@ -367,7 +389,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   worksheet.set_column(2, 2, 48)
   worksheet.set_column(3, 3, 6, center)
   worksheet.set_column(4, 4, 16, center)
-  worksheet.set_column(5, 5, None, price)
+  worksheet.set_column(5, 5, None, currency)
   worksheet.set_column(6, 6, 4)
 
   worksheet.set_row(row, None, header)
@@ -408,14 +430,14 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   def write_row():
 
     worksheet.write(row, 0, code)
-    worksheet.write(row, 1, certified_organic)
+    worksheet.write(row, 1, certified_organic, center_border)
     worksheet.write(row, 2, name)
 
-    worksheet.write(row, 3, origin)
+    worksheet.write(row, 3, origin, center_border)
     #if origin:
     #  worksheet.write_comment(row, 3, country_names[origin])
 
-    worksheet.write(row, 5, price)
+    worksheet.write(row, 5, price, currency_border)
 
   name_size_re = re.compile('''
     ''' + not_numbers_or_letters + '''
@@ -471,10 +493,14 @@ if os.environ['REQUEST_METHOD'] == 'POST':
 
           worksheet.set_row(row, None, border)
           write_row()
-          worksheet.write(row, 4, size)
+          worksheet.write(row, 4, size, center_border)
           row += 1
 
         worksheet.set_row(row - 1, None, bottom)
+        worksheet.write(row - 1, 1, certified_organic, center_bottom)
+        worksheet.write(row - 1, 3, origin, center_bottom)
+        worksheet.write(row - 1, 4, size, center_bottom)
+        worksheet.write(row - 1, 5, price, currency_bottom)
 
         if origin:
           origins.update(origin.split('/'))
@@ -485,10 +511,14 @@ if os.environ['REQUEST_METHOD'] == 'POST':
 
           worksheet.set_row(row, None, border)
           write_row()
-          worksheet.write(row, 4, size)
+          worksheet.write(row, 4, size, center_border)
           row += 1
 
         worksheet.set_row(row - 1, None, bottom)
+        worksheet.write(row - 1, 1, certified_organic, center_bottom)
+        worksheet.write(row - 1, 3, origin, center_bottom)
+        worksheet.write(row - 1, 4, size, center_bottom)
+        worksheet.write(row - 1, 5, price, currency_bottom)
 
         if origin:
           origins.update(origin.split('/'))
@@ -526,12 +556,12 @@ if os.environ['REQUEST_METHOD'] == 'POST':
               if parts:
                 size += ' (' + ' - '.join(parts) + ')'
 
-              worksheet.write(row, 4, size)
+              worksheet.write(row, 4, size, center_bottom)
               name = name[:start]
 
             elif units:
 
-              worksheet.write(row, 4, size)
+              worksheet.write(row, 4, size, center_bottom)
               name = name[:start]
 
           else:
@@ -562,14 +592,18 @@ if os.environ['REQUEST_METHOD'] == 'POST':
                 if parts:
                   size += ' (' + ' - '.join(parts) + ')'
 
-                worksheet.write(row, 4, size)
+                worksheet.write(row, 4, size, center_bottom)
 
               elif units:
-                worksheet.write(row, 4, size)
+                worksheet.write(row, 4, size, center_bottom)
 
         worksheet.set_row(row, None, bottom)
         write_row()
         row += 1
+
+        worksheet.write(row - 1, 1, certified_organic, center_bottom)
+        worksheet.write(row - 1, 3, origin, center_bottom)
+        worksheet.write(row - 1, 5, price, currency_bottom)
 
         if origin:
           origins.update(origin.split('/'))
@@ -578,7 +612,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   worksheet.merge_range(row, 0, row, 7, 'WHY ORGANIC MATTERS:', heading)
   row += 1
 
-  worksheet.set_row(row, 42)
+  worksheet.set_row(row, 14.5 * 3)
   worksheet.merge_range(row, 0, row, 7, 'For the health and wellbeing of people and the planet, our passion is to provide the highest quality and most nutritious foods, grown as locally, as fairly traded, and as sustainable as possible. We encourage bulk buying to minimize packaging and waste, keeping food simple and affordable.', text_wrap)
   row += 1
 
@@ -586,7 +620,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   worksheet.merge_range(row, 0, row, 7, 'ORDERING NOTES:', heading)
   row += 1
 
-  worksheet.set_row(row, 162)
+  worksheet.set_row(row, 14.5 * 12)
   worksheet.merge_range(row, 0, row, 7, None)
   worksheet.write_rich_string(row, 0, 'You can place your order ', bold, 'anytime', ' by phone ', bold, '250-505-2272', ' or email ', bold, 'info@omfoods.com', '. Out of stock items will not be placed on backorder.\nMinimum for ', bold, 'phone or email', ' orders is ', bold, '$150', ', ', bold, '$100', ' for ', bold, 'online', ' orders. Orders above $1,500 deduct 2%.\nOnce confirmed, you can pick up your order ', bold, 'Monday to Friday 10 AM to 5:30 PM', ' at our warehouse ', bold, '3505 Highway 6 • Nelson BC', '\nFor out of town orders, please enquire to receive a freight quote. ', bold, 'Only liquids in 16oz and 32oz containers will be shipped in glass.', '\nPayment is COD by cheque, e-transfer, or cash. ', bold, 'Returned cheques are subject to a $15 fee.\nPrices are subject to change without notice.', ' Pricing is mostly affected by currency exchange, transportation costs, and market fluctuations.\n', bold, 'RETURN POLICY:', ' We want you to be happy with our products! Organic foods such as grains, nuts, dried fruits, etc. are particularly susceptible to insect contamination. Please inspect products when they arrive and store them properly in cool, dark conditions. Organic Matters must be notified ', bold, 'within 7 days', ' if you wish to receive credit due to insect contamination or any other quality issues. Please return remaining products in their original packaging.', text_wrap)
   row += 1
@@ -599,7 +633,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   worksheet.merge_range(row, 0, row, 7, 'COUNTRY CODES:', heading)
   row += 1
 
-  worksheet.set_row(row, 70)
+  worksheet.set_row(row, 14.5 * 5)
   worksheet.merge_range(row, 0, row, 7, None)
 
   origins = list(origins)
@@ -614,7 +648,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
 
   row += 1
 
-  worksheet.fit_to_pages(1, None)
+  worksheet.fit_to_pages(1, 0)
 
   workbook.close()
 
