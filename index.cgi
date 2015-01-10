@@ -112,7 +112,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
       elif units not in ['ct', 'g', 'gal', 'kg', 'lb', 'ml', 'oz']:
         units = ' ' + units
 
-    if tail == 'x':
+    if tail in 'Xx':
       tail = ''
 
     elif tail:
@@ -165,22 +165,34 @@ if os.environ['REQUEST_METHOD'] == 'POST':
     if size:
       head_match = head_re.search(size, 9)
 
-      tail_match = tail_re.search(size, head_match.end())
-      if tail_match:
-        parts = size_re.findall(size, head_match.end(), tail_match.start())
+      head, value, units, tail = head_match.groups('')
+      if units in 'Xx':
 
-      else:
+        head_match = head_re.search(size, head_match.end())
         parts = size_re.findall(size, head_match.end())
 
-      head, value, units, tail = head_match.groups('')
-      size = fixup_groups((head, value, units, tail))
+        size = head.lower() + ' ' + value + ' × '
+
+        head, value, units, tail = head_match.groups('')
+        size += fixup_groups((head, value, units, tail))
+
+      else:
+
+        tail_match = tail_re.search(size, head_match.end())
+        if tail_match:
+          parts = size_re.findall(size, head_match.end(), tail_match.start())
+
+        else:
+          parts = size_re.findall(size, head_match.end())
+
+        size = fixup_groups((head, value, units, tail))
+
+        if tail_match:
+          size = tail_match.group().lower() + ' × ' + size
 
       parts = filter(any, parts)
       if parts:
         size += ' (' + ' - '.join(map(fixup_groups, parts)) + ')'
-
-      if tail_match:
-        size = tail_match.group().lower() + ' × ' + size
 
       return size[0].upper() + size[1:]
 
@@ -188,62 +200,69 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   for row in csv.DictReader(open(filename + '.csv', 'U')):
     if row['Item Type'] == 'Product':
 
-      name = row['Product Name']
-      name = name.decode('utf-8')
-      if name.lower().startswith('organic '):
-        name = name[8:]
+      skus = {}
+      rules = []
 
-      code = row['Product Code/SKU']
-      code = code.decode('utf-8')
-      code = code.replace(' ', '')
-
-      description = row['Product Description']
-      parser.data = ''
-      parser.feed(description)
-      description = ' '.join(parser.data.split())
-
-      if 'certified organic' in description.lower():
-        certified_organic = 'Y'
+      if row.get('Allow Purchases?') == 'N':
+        product_price = 'O/S'
 
       else:
-        certified_organic = None
-
-      match = origin_re.search(description)
-      if match:
-        match = countries_re.match(description, match.end())
-
-      else:
-        match = countries_re.match(description)
-
-      if match:
-
-        origin = country_codes[match.group(1).lower()]
-        if match.group(2):
-          origin += '/' + country_codes[match.group(2).lower()]
-
-      else:
-        origin = None
-
-      if row['Allow Purchases?'] == 'Y':
 
         product_price = row['Price']
         product_price = float(product_price)
 
-      else:
-        product_price = 'O/S'
+      if row.get('Product Visible?') != 'N':
 
-      category = row['Category']
-      category = category.split(b';', 1)[0]
-      category = category.decode('utf-8')
+        name = row['Product Name']
+        name = name.decode('utf-8')
+        if name.lower().startswith('organic '):
+          name = name[8:]
 
-      skus = {}
-      rules = []
+        code = row['Product Code/SKU']
+        code = code.decode('utf-8')
+        code = code.replace(' ', '')
 
-      if category in data:
-        data[category].append((name, code, certified_organic, origin, description, product_price, skus, rules))
+        description = row['Product Description']
+        parser.data = ''
+        parser.feed(description)
+        description = ' '.join(parser.data.split())
 
-      else:
-        data[category] = [(name, code, certified_organic, origin, description, product_price, skus, rules)]
+        if 'certified organic' in description.lower():
+          certified_organic = 'Y'
+
+        else:
+          certified_organic = None
+
+        match = origin_re.search(description)
+        if match:
+          match = countries_re.match(description, match.end())
+
+        else:
+          match = countries_re.match(description)
+
+        if match:
+
+          origin = country_codes[match.group(1).lower()]
+          if match.group(2):
+            origin += '/' + country_codes[match.group(2).lower()]
+
+        else:
+          origin = None
+
+        category = row['Category']
+        category = category.split(b';', 1)[0]
+        category = category.decode('utf-8')
+
+        tax = {
+          'Default Tax Class': 0.05,
+          'Sales Tax': 0.12,
+          }.get(row.get('Product Tax Class'))
+
+        if category in data:
+          data[category].append((name, code, certified_organic, origin, description, product_price, tax, skus, rules))
+
+        else:
+          data[category] = [(name, code, certified_organic, origin, description, product_price, tax, skus, rules)]
 
     elif row['Item Type'] == '  SKU':
 
@@ -257,35 +276,36 @@ if os.environ['REQUEST_METHOD'] == 'POST':
       skus[size] = code
 
     elif row['Item Type'] == '  Rule':
+      if row.get('Product Visible?') != 'N':
 
-      size = row['Product Name']
-      size = fixup_size(size)
+        size = row['Product Name']
+        size = fixup_size(size)
 
-      code = row['Product Code/SKU']
-      code = code.decode('utf-8')
-      code = code.replace(' ', '')
+        code = row['Product Code/SKU']
+        code = code.decode('utf-8')
+        code = code.replace(' ', '')
 
-      if row['Allow Purchases?'] == 'Y':
-
-        rule_price = row['Price']
-        if rule_price.startswith('[ADD]'):
-
-          rule_price = rule_price[5:]
-          rule_price = float(rule_price)
-          rule_price += product_price
-
-        elif rule_price.startswith('[FIXED]'):
-
-          rule_price = rule_price[7:]
-          rule_price = float(rule_price)
+        if row.get('Allow Purchases?') == 'N':
+          rule_price = 'O/S'
 
         else:
-          rule_price = product_price
 
-      else:
-        rule_price = 'O/S'
+          rule_price = row['Price']
+          if rule_price.startswith('[ADD]'):
 
-      rules.append((size, code, rule_price))
+            rule_price = rule_price[5:]
+            rule_price = float(rule_price)
+            rule_price += product_price
+
+          elif rule_price.startswith('[FIXED]'):
+
+            rule_price = rule_price[7:]
+            rule_price = float(rule_price)
+
+          else:
+            rule_price = product_price
+
+        rules.append((size, code, rule_price))
 
   country_names = {}
   for entry in tree.findall('iso_3166_entry'):
@@ -363,6 +383,17 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   last_updated_bold = workbook.add_format(dict(
     bold=True,
     font_color='#FF0000'))
+  percent = workbook.add_format(dict(num_format='0%'))
+  percent_border = workbook.add_format(dict(
+    bottom=4,
+    left=1,
+    num_format='0%',
+    right=1))
+  percent_bottom = workbook.add_format(dict(
+    bottom=1,
+    left=1,
+    num_format='0%',
+    right=1))
   text_wrap = workbook.add_format(dict(text_wrap=True))
   thank_you = workbook.add_format(dict(
     align='center',
@@ -416,7 +447,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
   worksheet.set_column(3, 3, 6, center)
   worksheet.set_column(4, 4, 16, center)
   worksheet.set_column(5, 5, None, currency)
-  worksheet.set_column(6, 6, 4)
+  worksheet.set_column(6, 6, 4, percent)
 
   worksheet.set_row(row, None, header)
   worksheet.write(row, 0, 'CODE')
@@ -464,6 +495,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
     #  worksheet.write_comment(row, 3, country_names[origin])
 
     worksheet.write(row, 5, price, currency_border)
+    worksheet.write(row, 6, tax, percent_border)
 
   name_size_re = re.compile('''
     ''' + not_numbers_or_letters + '''
@@ -500,7 +532,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
     row += 1
 
     data[category].sort()
-    for name, code, certified_organic, origin, description, price, skus, rules in data[category]:
+    for name, code, certified_organic, origin, description, price, tax, skus, rules in data[category]:
       if rules:
         for size, code, price in rules:
           if not code:
@@ -527,6 +559,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
         worksheet.write(row - 1, 3, origin, center_bottom)
         worksheet.write(row - 1, 4, size, center_bottom)
         worksheet.write(row - 1, 5, price, currency_bottom)
+        worksheet.write(row - 1, 6, tax, percent_bottom)
 
         if origin:
           origins.update(origin.split('/'))
@@ -545,6 +578,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
         worksheet.write(row - 1, 3, origin, center_bottom)
         worksheet.write(row - 1, 4, size, center_bottom)
         worksheet.write(row - 1, 5, price, currency_bottom)
+        worksheet.write(row - 1, 6, tax, percent_bottom)
 
         if origin:
           origins.update(origin.split('/'))
@@ -630,6 +664,7 @@ if os.environ['REQUEST_METHOD'] == 'POST':
         worksheet.write(row - 1, 1, certified_organic, center_bottom)
         worksheet.write(row - 1, 3, origin, center_bottom)
         worksheet.write(row - 1, 5, price, currency_bottom)
+        worksheet.write(row - 1, 6, tax, percent_bottom)
 
         if origin:
           origins.update(origin.split('/'))
